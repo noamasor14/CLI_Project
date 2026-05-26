@@ -1,0 +1,4 @@
+Variant,N Features,Train Windows,Accuracy,Balanced Acc,F1 (macro),LOPO AUC,Recall High,Segment AUC,Seg Recall High
+A — v3 filter + Original,10,"14,292",0.541,0.551,0.536,0.568,0.643,0.593,0.676
+B — v3 filter + Orig + Delta,20,"14,292",0.541,0.551,0.535,0.568,0.643,0.593,0.67
+C — v3 filter + Orig + Delta + Ratio,30,"14,292",0.54,0.552,0.534,0.565,0.663,0.59,0.692

@@ -1,0 +1,44 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Raw participant data (files up to 773 MB — exceeds GitHub 100 MB limit)
+# The dashboard reads only from outputs/*.csv (pre-computed)
+UN_101/
+UN_102/
+UN_103/
+UN_104/
+UN_105/
+UN_106/
+UN_107/
+UN_108/
+UN_109/
+UN_110/
+UN_111/
+UN_112/
+UN_113/
+UN_114/
+UN_115/
+UN_116/
+UN_117/
+UN_118/
+UN_119/
+UN_120/
+UN_121/
+UN_122/
+UN_123/
+UN_124/
+
+# Claude internal memory (not part of project)
+.claude/
+
+# Temporary / scratch scripts
+_*.py
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
