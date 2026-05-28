@@ -38,6 +38,7 @@ def color_cli(value):
 DATA_PATH    = os.path.join("outputs", "cli_dashboard_data.csv")
 FEAT_PATH    = os.path.join("outputs", "v7_feature_importance_best_variant.csv")
 COMP_PATH    = os.path.join("outputs", "v7_model_comparison.csv")
+WILD_PATH    = os.path.join("outputs", "wild_cli_exploration.csv")
 
 @st.cache_data
 def load_data():
@@ -46,14 +47,22 @@ def load_data():
     comp = pd.read_csv(COMP_PATH)
     return df, feat, comp
 
+@st.cache_data
+def load_wild_data():
+    if not os.path.exists(WILD_PATH):
+        return None
+    return pd.read_csv(WILD_PATH)
+
 df, feat_df, comp_df = load_data()
+wild_df = load_wild_data()
 
 # ── Sidebar navigation ────────────────────────────────────────────────────────
 st.sidebar.title("🧠 CLI Dashboard")
 st.sidebar.markdown("---")
 section = st.sidebar.radio(
     "Navigate",
-    ["Overview", "Participant View", "Task / Segment Comparison", "Model Results", "Project Information"],
+    ["Overview", "Participant View", "Task / Segment Comparison",
+     "Model Results", "Wild Exploration", "Project Information"],
     index=0,
 )
 st.sidebar.markdown("---")
@@ -538,11 +547,183 @@ that a 30-second window belongs to the High cognitive load class.
 - Segments without NASA match → kept (conservative)
 """)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 6 — WILD EXPLORATION
+# ─────────────────────────────────────────────────────────────────────────────
+elif section == "Wild Exploration":
+    st.title("Wild Data — Exploratory CLI Visualization")
+
+    st.info(
+        "**Wild data is used here for exploratory visualization only. "
+        "It was not used to train or select the final model.**  \n\n"
+        "Wild sessions use naturalistic, uncontrolled recording conditions. "
+        "The CLI values shown below are produced by applying the Lab-trained model "
+        "to Wild physiological data as fully unseen input. "
+        "No accuracy or AUC metrics are computed — there is no validated ground-truth "
+        "label for cognitive load in Wild sessions."
+    )
+
+    if wild_df is None:
+        st.warning(
+            "Wild exploration data file not found.  \n"
+            "`outputs/wild_cli_exploration.csv` does not exist.  \n\n"
+            "To generate it, run **Notebook 08**: "
+            "`08_wild_exploratory_cli_visualization.ipynb`"
+        )
+        st.stop()
+
+    st.markdown("---")
+
+    # ── KPI row ───────────────────────────────────────────────────────────────
+    n_wild_p    = wild_df["participant_id"].nunique()
+    n_wild_w    = len(wild_df)
+    n_wild_s    = wild_df.groupby(["participant_id", "segment"]).ngroups
+    avg_wild    = wild_df["CLI"].mean()
+    pct_hi_wild = (wild_df["CLI_category"] == "High").mean() * 100
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Participants",  n_wild_p)
+    k2.metric("Windows",       f"{n_wild_w:,}")
+    k3.metric("Segments",      n_wild_s)
+    k4.metric("Avg CLI",       f"{avg_wild:.1f}")
+    k5.metric("% High Load",   f"{pct_hi_wild:.1f}%")
+
+    st.markdown("---")
+
+    # ── Participant + segment selectors ───────────────────────────────────────
+    col_w1, col_w2 = st.columns(2)
+    with col_w1:
+        wild_participants = sorted(wild_df["participant_id"].unique())
+        sel_pid = st.selectbox("Participant", wild_participants, key="wild_pid")
+    with col_w2:
+        wild_segs = sorted(wild_df.loc[wild_df["participant_id"] == sel_pid, "segment"].unique())
+        sel_seg_all = st.selectbox("Segment (or All)", ["— All segments —"] + wild_segs, key="wild_seg")
+
+    if sel_seg_all == "— All segments —":
+        pdata_w = wild_df[wild_df["participant_id"] == sel_pid].copy()
+    else:
+        pdata_w = wild_df[
+            (wild_df["participant_id"] == sel_pid) & (wild_df["segment"] == sel_seg_all)
+        ].copy()
+
+    if pdata_w.empty:
+        st.warning("No data for this selection.")
+        st.stop()
+
+    pdata_w = pdata_w.sort_values(["segment", "window_idx"]).reset_index(drop=True)
+    pdata_w["w_global"] = range(len(pdata_w))
+
+    # ── CLI time-series ───────────────────────────────────────────────────────
+    st.subheader(f"CLI Time-Series — {sel_pid} / {sel_seg_all}")
+
+    fig_wild_ts = go.Figure()
+    for sh in cli_zone_shapes():
+        fig_wild_ts.add_shape(**sh)
+
+    for cat, grp in pdata_w.groupby("CLI_category"):
+        fig_wild_ts.add_trace(go.Scatter(
+            x=grp["w_global"], y=grp["CLI"],
+            mode="markers",
+            marker=dict(color=COLOR_MAP[cat], size=4, opacity=0.7),
+            name=cat,
+        ))
+
+    seg_boundaries_w = pdata_w.groupby("segment")["w_global"].min().to_dict()
+    for seg, xpos in seg_boundaries_w.items():
+        fig_wild_ts.add_vline(x=xpos, line_dash="dot", line_color="gray", line_width=1)
+        fig_wild_ts.add_annotation(x=xpos, y=103, text=seg[:16], showarrow=False,
+                                    textangle=-45, font=dict(size=8, color="gray"),
+                                    xanchor="left", yanchor="bottom")
+
+    fig_wild_ts.add_hline(y=40, line_dash="dash", line_color=COLOR_LOW,  line_width=1)
+    fig_wild_ts.add_hline(y=70, line_dash="dash", line_color=COLOR_HIGH, line_width=1)
+    fig_wild_ts.update_layout(
+        xaxis_title="Window index", yaxis_title="CLI",
+        yaxis_range=[0, 108], legend_title="Category",
+        margin=dict(t=40, b=60, l=50, r=20), height=400,
+    )
+    st.plotly_chart(fig_wild_ts, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Stats ─────────────────────────────────────────────────────────────────
+    w_avg  = pdata_w["CLI"].mean()
+    w_lo   = (pdata_w["CLI_category"] == "Low").mean()    * 100
+    w_me   = (pdata_w["CLI_category"] == "Medium").mean() * 100
+    w_hi   = (pdata_w["CLI_category"] == "High").mean()   * 100
+
+    st.subheader("Statistics for Selection")
+    sw1, sw2, sw3, sw4 = st.columns(4)
+    sw1.metric("Avg CLI",   f"{w_avg:.1f}")
+    sw2.metric("% Low",     f"{w_lo:.1f}%")
+    sw3.metric("% Medium",  f"{w_me:.1f}%")
+    sw4.metric("% High",    f"{w_hi:.1f}%")
+
+    st.markdown("---")
+
+    # ── Mean CLI by Wild condition ────────────────────────────────────────────
+    col_wc1, col_wc2 = st.columns([1, 1])
+
+    with col_wc1:
+        st.subheader("Mean CLI by Wild Condition (all participants)")
+        cond_agg = (
+            wild_df.groupby("wild_condition")["CLI"]
+            .mean().sort_values(ascending=False).reset_index()
+            .rename(columns={"wild_condition": "Condition", "CLI": "Mean CLI"})
+        )
+        cond_agg["Mean CLI"] = cond_agg["Mean CLI"].round(1)
+        bar_clrs_w = [
+            COLOR_HIGH if v > 70 else COLOR_MED if v > 40 else COLOR_LOW
+            for v in cond_agg["Mean CLI"]
+        ]
+        fig_cond = go.Figure(go.Bar(
+            x=cond_agg["Condition"], y=cond_agg["Mean CLI"],
+            marker_color=bar_clrs_w,
+            text=cond_agg["Mean CLI"], textposition="outside",
+        ))
+        fig_cond.add_hline(y=40, line_dash="dash", line_color=COLOR_LOW,  line_width=1)
+        fig_cond.add_hline(y=70, line_dash="dash", line_color=COLOR_HIGH, line_width=1)
+        fig_cond.update_layout(
+            yaxis_range=[0, 100], yaxis_title="Mean CLI",
+            margin=dict(t=10, b=80, l=40, r=20), height=340,
+        )
+        st.plotly_chart(fig_cond, use_container_width=True)
+
+    with col_wc2:
+        st.subheader("Lab vs Wild — CLI Summary")
+        lab_stats = {
+            "Mean CLI":     round(df["CLI"].mean(), 1),
+            "% Low":        round((df["CLI_category"] == "Low").mean()    * 100, 1),
+            "% Medium":     round((df["CLI_category"] == "Medium").mean() * 100, 1),
+            "% High":       round((df["CLI_category"] == "High").mean()   * 100, 1),
+            "Windows":      len(df),
+            "Participants": df["participant_id"].nunique(),
+        }
+        wild_stats_tbl = {
+            "Mean CLI":     round(wild_df["CLI"].mean(), 1),
+            "% Low":        round((wild_df["CLI_category"] == "Low").mean()    * 100, 1),
+            "% Medium":     round((wild_df["CLI_category"] == "Medium").mean() * 100, 1),
+            "% High":       round((wild_df["CLI_category"] == "High").mean()   * 100, 1),
+            "Windows":      len(wild_df),
+            "Participants": wild_df["participant_id"].nunique(),
+        }
+        cmp = pd.DataFrame({
+            "Lab (LOPO eval)":    lab_stats,
+            "Wild (exploratory)": wild_stats_tbl,
+        })
+        st.dataframe(cmp, use_container_width=True)
+        st.caption(
+            "Lab metrics reflect LOPO cross-validation. "
+            "Wild metrics are exploratory — no ground-truth labels available."
+        )
+
+
 print("Dashboard created successfully.")
 print()
 print("Generated files:")
 print("  app.py")
 print("  outputs/cli_dashboard_data.csv")
+print("  outputs/wild_cli_exploration.csv")
 print("  outputs/v7_model_comparison.csv")
 print("  outputs/v7_lopo_predictions_best_variant.csv")
 print("  outputs/v7_feature_importance_best_variant.csv")
