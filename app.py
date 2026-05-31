@@ -150,15 +150,6 @@ if section == "Overview":
     part_summary["% High"]  = part_summary["% High"].round(1)
     part_summary["% Low"]   = part_summary["% Low"].round(1)
 
-    # color Avg CLI column
-    def color_cli(val):
-        if val <= 40:
-            return f"background-color: {COLOR_LOW}33"
-        elif val <= 70:
-            return f"background-color: {COLOR_MED}33"
-        else:
-            return f"background-color: {COLOR_HIGH}33"
-
     st.dataframe(
         part_summary.style.applymap(color_cli, subset=["Avg CLI"]),
         use_container_width=True,
@@ -308,28 +299,50 @@ elif section == "Task / Segment Comparison":
     sort_col = st.selectbox("Sort by", ["Mean CLI", "% High", "Avg NASA", "Windows"], index=0)
     seg_agg  = seg_agg.sort_values(sort_col, ascending=False)
 
-    # category color for each bar
-    def cat_color(v):
-        if v <= 40:   return COLOR_LOW
-        elif v <= 70: return COLOR_MED
-        else:         return COLOR_HIGH
+    # ── Chart config per selected metric ─────────────────────────────────────
+    chart_cfg = {
+        "Mean CLI":  {"title": "Mean CLI by Segment",           "y_label": "Mean CLI",        "show_cli_lines": True,  "y_range": [0, 100]},
+        "% High":    {"title": "% High Load by Segment",        "y_label": "% High",          "show_cli_lines": False, "y_range": [0, 100]},
+        "Avg NASA":  {"title": "Average NASA-TLX by Segment",   "y_label": "Avg NASA",        "show_cli_lines": False, "y_range": None},
+        "Windows":   {"title": "Number of Windows by Segment",  "y_label": "Windows",         "show_cli_lines": False, "y_range": None},
+    }
+    cfg = chart_cfg[sort_col]
 
-    bar_colors = [cat_color(v) for v in seg_agg["Mean CLI"]]
+    y_vals = seg_agg[sort_col]
+
+    # Color bars by CLI category only when showing Mean CLI; neutral otherwise
+    if sort_col == "Mean CLI":
+        def cat_color(v):
+            if v <= 40:   return COLOR_LOW
+            elif v <= 70: return COLOR_MED
+            else:         return COLOR_HIGH
+        bar_colors = [cat_color(v) for v in y_vals]
+    else:
+        bar_colors = "#5b9bd5"
 
     fig_bar = go.Figure(go.Bar(
-        x=seg_agg["Segment"], y=seg_agg["Mean CLI"],
+        x=seg_agg["Segment"],
+        y=y_vals,
         marker_color=bar_colors,
-        text=seg_agg["Mean CLI"].round(1),
+        text=y_vals.round(1),
         textposition="outside",
     ))
-    fig_bar.add_hline(y=40, line_dash="dash", line_color=COLOR_LOW,  annotation_text="Low/Med boundary",  annotation_position="right")
-    fig_bar.add_hline(y=70, line_dash="dash", line_color=COLOR_HIGH, annotation_text="Med/High boundary", annotation_position="right")
-    fig_bar.update_layout(
-        xaxis_title="Segment", yaxis_title="Mean CLI",
-        yaxis_range=[0, 100],
-        margin=dict(t=20, b=80, l=50, r=20),
+
+    if cfg["show_cli_lines"]:
+        fig_bar.add_hline(y=40, line_dash="dash", line_color=COLOR_LOW,  annotation_text="Low/Med boundary",  annotation_position="right")
+        fig_bar.add_hline(y=70, line_dash="dash", line_color=COLOR_HIGH, annotation_text="Med/High boundary", annotation_position="right")
+
+    layout_kwargs = dict(
+        title_text=cfg["title"],
+        xaxis_title="Segment",
+        yaxis_title=cfg["y_label"],
+        margin=dict(t=50, b=80, l=50, r=20),
         height=420,
     )
+    if cfg["y_range"]:
+        layout_kwargs["yaxis_range"] = cfg["y_range"]
+
+    fig_bar.update_layout(**layout_kwargs)
     st.plotly_chart(fig_bar, use_container_width=True)
 
     st.markdown("---")
@@ -492,7 +505,7 @@ that a 30-second window belongs to the High cognitive load class.
     # ── Analysis progression ──────────────────────────────────────────────────
     st.subheader("Analysis Progression")
     progression = pd.DataFrame([
-        {"Notebook": "01", "Description": "Initial CLI pipeline — baseline LOPO, GBT model"},
+        {"Notebook": "01", "Description": "Initial CLI pipeline — RandomForest baseline, participant-stratified split"},
         {"Notebook": "02", "Description": "Improved pipeline — v2 baseline model (GBT n=100, random_state=42)"},
         {"Notebook": "03", "Description": "NASA-TLX exploration — questionnaire scores vs. predicted CLI"},
         {"Notebook": "04", "Description": "v3 noisy-label filter — remove ambiguous segments from training"},
