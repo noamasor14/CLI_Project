@@ -1,0 +1,58 @@
+﻿section,item_checked,expected_value,dashboard_value_or_logic,status,notes
+CLI Formula,CLI = predicted_probability_high * 100,100.0% match,100.00% match (18659/18659),PASS,Rounding tolerance ±0.05
+CLI Formula,CLI range 0–100,0 <= CLI <= 100,2.8 – 95.1,PASS,
+CLI Formula,Category 0–40 = Low,all Low,all Low,PASS,
+CLI Formula,Category 41–70 = Medium,all Medium,all Medium,PASS,
+CLI Formula,Category 71–100 = High,all High,all High,PASS,
+Overview,n_participants,24,24,PASS,
+Overview,n_windows,18659,18659,PASS,
+Overview,n_segments,407,407,PASS,"Dashboard uses groupby(participant,session,segment).ngroups — correct"
+Overview,avg_cli,53.2,53.2,PASS,"Computed from df[""CLI""].mean()"
+Overview,pct_high,13.8%,13.8%,PASS,"Computed from (CLI_category==""High"").mean()*100"
+Overview,Category Low count,3620,3620,PASS,
+Overview,Category Medium count,12456,12456,PASS,
+Overview,Category High count,2583,2583,PASS,
+Overview,UN_101 avg CLI (spot check),53.1,53.1,PASS,Dashboard computes groupby(participant).agg(CLI.mean)
+Overview,UN_101 sessions,2,2,PASS,
+Overview,color_cli local shadow of global function,No shadowing — single definition,LOCAL color_cli at line 154 shadows global at line 22,WARN,"Local version uses 8-digit hex (#RRGGBB33), no try/except, no text color. Modern browsers accept 8-digit hex but it is inconsistent with the fix applied elsewhere. Recommend removing the local definition and using the global color_cli."
+Participant View,Filter participant + session (UN_101/Lab1),414 rows,414 rows,PASS,Dashboard uses df[(pid==P)&(session==S)] — correct
+Participant View,Avg CLI calc (UN_101/Lab1),55.6,55.6,PASS,
+Participant View,% Low/Med/High calc (UN_101/Lab1),L=20.5 M=54.6 H=24.9,L=20.5 M=54.6 H=24.9,PASS,
+Participant View,Segment Windows count (window_idx.count vs size),Equal,Equal,PASS,window_idx.count() == len(segment rows) as long as no NaN in window_idx
+Task/Segment,Groupby segment (not participant/session),Averages across all participants and sessions per segment type,"df.groupby(""segment"").agg(mean CLI, % High, count, mean NASA)",PASS,Intentional design — cross-participant/session mean per segment type
+Task/Segment,Segment types count,9,9,PASS,
+Task/Segment,Mean CLI hard vs easy direction,hard > easy,hard=55.2 > easy=53.3,PASS,Model should score hard tasks higher than easy — confirms directional correctness
+Task/Segment,Mean CLI relaxation (lowest),relaxation lowest,relax=44.6,INFO,Rest segments should have lowest CLI
+Model Results,Accuracy hardcoded vs CSV,0.541,0.541,PASS,
+Model Results,Balanced Acc hardcoded vs CSV,0.551,0.551,PASS,
+Model Results,F1 hardcoded vs CSV,0.536,0.536,PASS,
+Model Results,LOPO AUC hardcoded vs CSV,0.568,0.568,PASS,
+Model Results,Recall High hardcoded vs CSV,0.643,0.643,PASS,
+Model Results,Metrics are hardcoded (not read from CSV),Dynamic read preferred,"Lines 366–370: pm1.metric(""Accuracy"",""0.541"") etc. — hardcoded strings",WARN,Values are correct but hardcoded. If CSV is updated the dashboard will not reflect change.
+Model Results,Feature importance source,v7_feature_importance_best_variant.csv,feat_df = pd.read_csv(FEAT_PATH) — correct,PASS,
+Model Results,Top feature in importance,mean_temp (0.347),mean_temp (0.347),PASS,
+Model Results,Wild data NOT used for model training,Wild excluded from training,Dashboard note: v3 filter on Lab1/Lab2 only,PASS,
+Wild,n_participants,22,22,PASS,
+Wild,n_windows,25448,25448,PASS,
+Wild,n_segments,201,201,PASS,
+Wild,avg_cli,55.3,55.3,PASS,
+Wild,pct_high,13.5%,13.5%,PASS,
+Wild,CLI = predicted_probability_high * 100,100% match,100.00%,PASS,
+Wild,Category boundaries correct (0-40 Low),True,True,PASS,
+Wild,Category boundaries correct (41-70 Medium),True,True,PASS,
+Wild,Category boundaries correct (71-100 High),True,True,PASS,
+Wild,Lab stats use df (cli_dashboard_data.csv),df,"lab_stats uses df[""CLI""], df[""CLI_category""] — correct",PASS,
+Wild,Wild stats use wild_df (wild_cli_exploration.csv),wild_df,"wild_stats_tbl uses wild_df[""CLI""], wild_df[""CLI_category""] — correct",PASS,
+Wild,No mixing of Lab and Wild data,Separate dataframes,df and wild_df loaded independently,PASS,
+Wild,Exploratory disclaimer shown,Yes — st.info(),"st.info(""Wild data is used here for exploratory visualization only..."")",PASS,
+Project Info,NB01 description accuracy,NB01 used RandomForest + GroupShuffleSplit (NO LOPO),"Dashboard says: ""Initial CLI pipeline — baseline LOPO, GBT model""",FAIL,"FACTUAL ERROR: Notebook 01 used RandomForest (not GBT) and GroupShuffleSplit (not LOPO). Correct description: ""Initial CLI pipeline — RandomForest baseline, participant-stratified split"""
+Project Info,NB02 description accuracy,NB02 introduced LOPO + GBT (correct),"""Improved pipeline — v2 baseline model (GBT n=100, random_state=42)""",PASS,
+Project Info,CLI formula shown correctly,CLI = P(High) × 100,$$\text{CLI} = P(\text{High}) \times 100$$,PASS,
+Project Info,Total windows stated,18659,"18,659 (hardcoded in markdown)",PASS,
+Project Info,Total segments stated,407,407 (hardcoded in markdown),PASS,
+Project Info,v2 normalization framed correctly,"""optimistic calibration assumption"" (NOT ""data leakage"")","""optimistic calibration assumption"" in Limitations",PASS,
+Cross-section,NASA score column present,Weighted_NASA_score,Weighted_NASA_score in df.columns,PASS,
+Cross-section,NASA NaN rate,~0.2% (46 windows),0.2%,PASS,NaN is expected for segments with no NASA-TLX match
+Cross-section,No duplicate windows,Zero duplicates,0 duplicates,PASS,
+Cross-section,All CLI values non-null,Zero NaN,0 NaN,PASS,
+Cross-section,All CLI_category values valid,"{Low,Medium,High}","['High', 'Low', 'Medium']",PASS,

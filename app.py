@@ -62,7 +62,7 @@ st.sidebar.markdown("---")
 section = st.sidebar.radio(
     "Navigate",
     ["Overview", "Participant View", "Task / Segment Comparison",
-     "Model Results", "Wild Exploration", "Project Information"],
+     "Model Results", "Wild Exploration", "Manager DSS Prototype", "Project Information"],
     index=0,
 )
 st.sidebar.markdown("---")
@@ -729,6 +729,293 @@ elif section == "Wild Exploration":
             "Lab metrics reflect LOPO cross-validation. "
             "Wild metrics are exploratory — no ground-truth labels available."
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 7 — MANAGER DSS PROTOTYPE
+# ─────────────────────────────────────────────────────────────────────────────
+elif section == "Manager DSS Prototype":
+    st.title("Manager DSS Prototype")
+
+    # ── Disclaimer ────────────────────────────────────────────────────────────
+    st.warning(
+        "**Prototype demonstration only.** "
+        "This page is based on offline experimental data and does not represent "
+        "a real-time operational employee monitoring system. "
+        "The CLI values are LOPO cross-validation predictions, not live measurements. "
+        "No conclusions about individual employees should be drawn from this page."
+    )
+
+    st.markdown("---")
+
+    # ── Build participant-level summary ───────────────────────────────────────
+    @st.cache_data
+    def build_part_summary(data):
+        ps = (
+            data.groupby("participant_id")
+            .agg(
+                Avg_CLI   = ("CLI",          "mean"),
+                Pct_High  = ("CLI_category", lambda x: (x == "High").mean()   * 100),
+                Pct_Med   = ("CLI_category", lambda x: (x == "Medium").mean() * 100),
+                Pct_Low   = ("CLI_category", lambda x: (x == "Low").mean()    * 100),
+                Windows   = ("window_idx",   "count"),
+            )
+            .reset_index()
+            .rename(columns={"participant_id": "Participant"})
+        )
+        ps["Avg_CLI"]  = ps["Avg_CLI"].round(1)
+        ps["Pct_High"] = ps["Pct_High"].round(1)
+        ps["Pct_Med"]  = ps["Pct_Med"].round(1)
+        ps["Pct_Low"]  = ps["Pct_Low"].round(1)
+
+        def risk_level(row):
+            if row["Avg_CLI"] >= 60 or row["Pct_High"] >= 25:
+                return "High Risk"
+            elif row["Avg_CLI"] >= 50 or row["Pct_High"] >= 15:
+                return "Medium Risk"
+            else:
+                return "Low Risk"
+
+        ps["Risk Level"] = ps.apply(risk_level, axis=1)
+        return ps
+
+    ps = build_part_summary(df)
+
+    RISK_COLOR = {"High Risk": COLOR_HIGH, "Medium Risk": COLOR_MED, "Low Risk": COLOR_LOW}
+    RISK_ACTION = {
+        "High Risk":   "Review workload, consider task redistribution, schedule rest or manager check-in.",
+        "Medium Risk": "Monitor trend, review task allocation, consider preventive intervention.",
+        "Low Risk":    "No immediate action required; continue monitoring.",
+    }
+
+    # ── Organisation-level summary cards ─────────────────────────────────────
+    st.subheader("Organisation-Level Summary")
+
+    n_total     = ps["Participant"].nunique()
+    org_avg_cli = ps["Avg_CLI"].mean()
+    org_pct_hi  = (df["CLI_category"] == "High").mean() * 100
+    n_cli_60    = (ps["Avg_CLI"] >= 60).sum()
+    n_pct_hi_20 = (ps["Pct_High"] >= 20).sum()
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Employees monitored", n_total)
+    k2.metric("Org avg CLI",         f"{org_avg_cli:.1f}")
+    k3.metric("% High-load windows", f"{org_pct_hi:.1f}%")
+    k4.metric("Avg CLI ≥ 60",        int(n_cli_60),
+              help="Participants whose mean CLI is 60 or above across all sessions")
+    k5.metric("% High ≥ 20%",        int(n_pct_hi_20),
+              help="Participants where more than 20% of windows are in the High category")
+
+    st.caption(
+        "These indicators are derived from LOPO cross-validation predictions on experimental lab data. "
+        "They illustrate what an organisational dashboard could show — they do not represent real employee data."
+    )
+    st.markdown("---")
+
+    # ── Risk segmentation table ───────────────────────────────────────────────
+    st.subheader("Employee Risk Segmentation")
+    st.caption(
+        "Risk Level rules:  **High Risk** — Avg CLI ≥ 60 OR % High ≥ 25 %  |  "
+        "**Medium Risk** — Avg CLI ≥ 50 OR % High ≥ 15 %  |  **Low Risk** — otherwise"
+    )
+
+    risk_counts = ps["Risk Level"].value_counts()
+    rc1, rc2, rc3 = st.columns(3)
+    def risk_card(col, label, color):
+        n = risk_counts.get(label, 0)
+        col.markdown(
+            f'<div style="background:{color}22;border-left:5px solid {color};'
+            f'padding:12px;border-radius:4px;text-align:center;">'
+            f'<b style="color:{color};font-size:1.4em;">{n}</b><br>'
+            f'<span style="font-size:0.9em;">{label}</span></div>',
+            unsafe_allow_html=True,
+        )
+    risk_card(rc1, "High Risk",   COLOR_HIGH)
+    risk_card(rc2, "Medium Risk", COLOR_MED)
+    risk_card(rc3, "Low Risk",    COLOR_LOW)
+
+    st.markdown("")
+
+    def style_risk(val):
+        clr = {"High Risk": COLOR_HIGH, "Medium Risk": COLOR_MED, "Low Risk": COLOR_LOW}.get(val, "")
+        return f"color:{clr};font-weight:bold" if clr else ""
+
+    display_ps = ps.rename(columns={
+        "Avg_CLI": "Avg CLI", "Pct_High": "% High",
+        "Pct_Med": "% Medium", "Pct_Low": "% Low",
+    }).sort_values("Avg CLI", ascending=False)
+
+    st.dataframe(
+        display_ps.style
+            .applymap(style_risk, subset=["Risk Level"])
+            .applymap(color_cli,  subset=["Avg CLI"]),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.markdown("---")
+
+    # ── Charts ────────────────────────────────────────────────────────────────
+    col_c1, col_c2 = st.columns(2)
+
+    with col_c1:
+        st.subheader("Top 10 by % High Load")
+        top10_high = ps.nlargest(10, "Pct_High")
+        bar_clrs_h = [RISK_COLOR[r] for r in top10_high["Risk Level"]]
+        fig_h = go.Figure(go.Bar(
+            x=top10_high["Participant"], y=top10_high["Pct_High"],
+            marker_color=bar_clrs_h,
+            text=top10_high["Pct_High"].apply(lambda v: f"{v:.1f}%"),
+            textposition="outside",
+        ))
+        fig_h.add_hline(y=25, line_dash="dash", line_color=COLOR_HIGH, line_width=1,
+                        annotation_text="High Risk threshold (25%)", annotation_position="right")
+        fig_h.add_hline(y=15, line_dash="dash", line_color=COLOR_MED, line_width=1,
+                        annotation_text="Med Risk threshold (15%)", annotation_position="right")
+        fig_h.update_layout(
+            xaxis_title="Participant", yaxis_title="% High Load",
+            yaxis_range=[0, max(top10_high["Pct_High"].max() + 5, 35)],
+            margin=dict(t=20, b=60, l=40, r=20), height=360,
+        )
+        st.plotly_chart(fig_h, use_container_width=True)
+
+    with col_c2:
+        st.subheader("Avg CLI by Participant")
+        ps_sorted = ps.sort_values("Avg_CLI", ascending=False)
+        bar_clrs_c = [RISK_COLOR[r] for r in ps_sorted["Risk Level"]]
+        fig_c = go.Figure(go.Bar(
+            x=ps_sorted["Participant"], y=ps_sorted["Avg_CLI"],
+            marker_color=bar_clrs_c,
+            text=ps_sorted["Avg_CLI"].apply(lambda v: f"{v:.1f}"),
+            textposition="outside",
+        ))
+        fig_c.add_hline(y=60, line_dash="dash", line_color=COLOR_HIGH, line_width=1,
+                        annotation_text="High Risk CLI (60)", annotation_position="right")
+        fig_c.add_hline(y=50, line_dash="dash", line_color=COLOR_MED, line_width=1,
+                        annotation_text="Med Risk CLI (50)", annotation_position="right")
+        fig_c.update_layout(
+            xaxis_title="Participant", yaxis_title="Avg CLI",
+            yaxis_range=[0, 100],
+            margin=dict(t=20, b=60, l=40, r=20), height=360,
+        )
+        # Legend patches via invisible traces
+        for label, clr in RISK_COLOR.items():
+            fig_c.add_trace(go.Bar(x=[None], y=[None], name=label,
+                                   marker_color=clr, showlegend=True))
+        fig_c.update_layout(legend_title="Risk Level")
+        st.plotly_chart(fig_c, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── DSS disclaimer note ───────────────────────────────────────────────────
+    st.info(
+        "**About this DSS:** The system does not diagnose burnout. "
+        "It translates physiological model outputs (CLI scores derived from EDA, HRV, and skin temperature) "
+        "into decision-support indicators. Risk levels are illustrative thresholds — "
+        "not validated clinical cutoffs."
+    )
+
+    st.markdown("---")
+
+    # ── Example manager interpretation ────────────────────────────────────────
+    st.subheader("Example Manager Interpretation")
+
+    sel_part = st.selectbox(
+        "Select participant to review",
+        sorted(ps["Participant"].unique()),
+        key="dss_part_sel",
+    )
+
+    sel_row = ps[ps["Participant"] == sel_part].iloc[0]
+    risk     = sel_row["Risk Level"]
+    risk_clr = RISK_COLOR[risk]
+    action   = RISK_ACTION[risk]
+
+    col_i1, col_i2 = st.columns([1, 2])
+
+    with col_i1:
+        st.markdown(
+            f'<div style="background:{risk_clr}22;border-left:6px solid {risk_clr};'
+            f'padding:16px;border-radius:6px;">'
+            f'<b>Participant:</b> {sel_part}<br>'
+            f'<b>Avg CLI:</b> {sel_row["Avg_CLI"]:.1f}<br>'
+            f'<b>% High Load:</b> {sel_row["Pct_High"]:.1f}%<br>'
+            f'<b>% Medium:</b> {sel_row["Pct_Med"]:.1f}%<br>'
+            f'<b>% Low:</b> {sel_row["Pct_Low"]:.1f}%<br>'
+            f'<b>Windows monitored:</b> {sel_row["Windows"]}<br><br>'
+            f'<b>Risk Level: <span style="color:{risk_clr}">{risk}</span></b>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    with col_i2:
+        st.markdown("**Recommended action:**")
+        st.markdown(
+            f'<div style="background:{risk_clr}11;border-left:4px solid {risk_clr};'
+            f'padding:12px;border-radius:4px;">{action}</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("")
+        # Plain-language interpretation
+        if risk == "High Risk":
+            interpretation = (
+                f"{sel_part} shows an average CLI of {sel_row['Avg_CLI']:.1f} and "
+                f"{sel_row['Pct_High']:.1f}% of monitored windows in the High-load category. "
+                "This pattern, if sustained, may indicate elevated and persistent cognitive demand. "
+                "A manager review and workload discussion are recommended before fatigue compounds."
+            )
+        elif risk == "Medium Risk":
+            interpretation = (
+                f"{sel_part} shows an average CLI of {sel_row['Avg_CLI']:.1f} and "
+                f"{sel_row['Pct_High']:.1f}% of windows in the High-load category — "
+                "within a manageable range but worth monitoring. "
+                "If the trend persists across sessions, a proactive conversation about workload balance "
+                "could prevent escalation to High Risk."
+            )
+        else:
+            interpretation = (
+                f"{sel_part} shows an average CLI of {sel_row['Avg_CLI']:.1f} and "
+                f"{sel_row['Pct_High']:.1f}% of windows in the High-load category. "
+                "Cognitive load appears within comfortable bounds across monitored tasks. "
+                "Continue routine monitoring with no immediate action required."
+            )
+        st.markdown(f"**Plain-language summary:**")
+        st.markdown(interpretation)
+
+    # Participant CLI distribution mini-chart
+    part_data = df[df["participant_id"] == sel_part]
+    cat_vals  = part_data["CLI_category"].value_counts().reindex(["Low", "Medium", "High"]).fillna(0)
+    fig_mini  = go.Figure(go.Bar(
+        x=cat_vals.index,
+        y=cat_vals.values,
+        marker_color=[COLOR_LOW, COLOR_MED, COLOR_HIGH],
+        text=cat_vals.values.astype(int),
+        textposition="outside",
+    ))
+    fig_mini.update_layout(
+        title_text=f"Window distribution — {sel_part}",
+        xaxis_title="CLI Category", yaxis_title="Windows",
+        margin=dict(t=40, b=30, l=40, r=20), height=260, showlegend=False,
+    )
+    st.plotly_chart(fig_mini, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Future organisational use ──────────────────────────────────────────────
+    st.subheader("How This Could Be Used in a Future Organisation")
+    st.markdown("""
+In a real organisational deployment, a system like this could support managers and HR by:
+
+- **Identifying workload hotspots** — flag roles or teams with consistently high CLI scores for workload review.
+- **Monitoring cognitive load trends** — track how load evolves across project phases, deadlines, or seasonal peaks.
+- **Supporting early intervention** — detect sustained High-risk patterns before they manifest as absenteeism or burnout.
+- **Enabling data-driven wellbeing decisions** — replace subjective assessments with objective physiological indicators.
+- **Combining with HR and operational indicators** — integrate CLI alongside task logs, self-report surveys, and HR data for a multi-source wellbeing dashboard.
+
+> **Important limitation:** This prototype uses offline experimental data from a controlled lab setting.
+> A real deployment would require continuous wearable data streams, individual privacy safeguards,
+> validated organisational thresholds, and integration with HR systems.
+""")
 
 
 print("Dashboard created successfully.")

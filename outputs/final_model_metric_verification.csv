@@ -1,0 +1,12 @@
+﻿metric,notebook_07_value,csv_value,dashboard_value,status,notes
+Accuracy,0.541,0.541,0.541,MATCH,Variant A row in v7_model_comparison.csv. Notebook 07 cell 19 output confirms 0.541.
+Balanced Accuracy,0.551,0.551,0.551,MATCH,Consistent across all three sources.
+F1 (macro),0.536,0.536,0.536,MATCH,Consistent across all three sources.
+LOPO AUC (window-level),0.568,0.568,0.568 (labelled 'ROC-AUC'),MATCH,Dashboard label 'ROC-AUC' refers to LOPO window-level AUC. Correct value.
+Recall High,0.643,0.643,0.643,MATCH,Consistent across all three sources.
+Segment AUC,0.593,0.593,Not displayed separately,INFO,Segment AUC is in the CSV but not shown as a KPI card. Not an error.
+Training data (filter),"v3 noisy-label filter, 14,292 windows","Train Windows = 14,292",Info card: v3 Noisy-Label Filter,MATCH,Dashboard correctly states v3 filter was applied.
+Selected variant,"Variant A (original features only, 10 features)",Row 0: A - v3 filter + Original,Subheader: 'Selected Variant (Variant A)',MATCH,Dashboard correctly identifies Variant A as selected.
+Accuracy ~0.577 (older),NB07 Variant A = 0.541 (DIFFERENT notebook),Not in v7_model_comparison.csv,Not shown,EXPLAINED,"NB02 'v2 LOPO best GBT th=0.50' = 0.575. v2 used full unfiltered training data (18,659 windows). NB07 uses v3-filtered training (14,292 windows). Lower accuracy is EXPECTED after filtering."
+AUC ~0.581 (older),NB07 Variant A = 0.568 (DIFFERENT notebook),Not in v7_model_comparison.csv,Not shown,EXPLAINED,"NB02 'v2 LOPO best' ROC-AUC = 0.580. Same model (GBT n=100) but trained on unfiltered data. The v3 filter in NB07 removes 4,367 windows including some easy-to-classify ones, slightly reducing AUC."
+AUC ~0.595 / 0.608 (older),NB07 Segment AUC = 0.593 (close but different),0.593 in v7_model_comparison.csv,Not shown as KPI,EXPLAINED,"NB02 'v2 Segment-level' accuracy = 0.595 (segment accuracy, NOT AUC). NB02 segment AUC = 0.608 (v2, unfiltered). NB07 segment AUC = 0.593 (v3-filtered). 0.608 is v2 segment AUC, not v7. The small drop is due to the v3 filter."
